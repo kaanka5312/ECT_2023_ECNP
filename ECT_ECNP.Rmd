@@ -1,0 +1,491 @@
+---
+title: "ECNP_ABSTRACT"
+author: "Kaan Keskin"
+date: "2023-04-29"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+library(ggplot2);
+library(ggpubr);
+library(rstatix);
+library(dplyr);
+library(ordinal);
+library(caret);
+```
+
+```{r Data Prepreation}
+data<-read.csv("C:/Users/kaan/Downloads/org_comb.csv")
+#Creating data ECT =====
+ECT<-data.frame(data)
+ECT$PAGE<-data$PAGE
+ECT$NAME<-data$NAME
+ECT$GENDER<-data$GENDER
+ECT$ECT_session<-as.numeric(data$ECT_session)
+ECT$Stimulus_Duration<-as.numeric(data$Stimulus_Duration)
+ECT$Frequency<-as.numeric(data$Frequency)
+ECT$Charge<-as.numeric(data$Charge)
+ECT$Prop<-as.numeric(data$Prop)
+ECT$Pentol<-as.numeric(data$Pentol)
+ECT$Ket<-as.numeric(data$Ket)
+ECT$Dor<-as.numeric(data$Dor)
+ECT$Es<-as.numeric(data$Es)
+ECT$Bri<-as.numeric(data$Bri)
+ECT$Atr<-as.numeric(data$Atr)
+ECT$Art<-as.numeric(data$Art)
+ECT$BEFORE_BP<-as.numeric(data$BEFORE_BP)
+ECT$BEFORE_PULSE<-as.numeric(data$BEFORE_PULSE)
+ECT$AFTER_BP<-as.numeric(data$AFTER_BP)
+ECT$AFTER_PULSE<-as.numeric(data$AFTER_PULSE)
+ECT$SEIZURE_DURATION<-as.numeric(data$SEIZURE_DURATION)
+
+#Finding multiple periods of sessions or mistakes
+subj<-data.frame()
+names_subj<-unique(ECT$NAME)
+for (i in c(1:72)){
+index= length(ECT[ECT$NAME==names_subj[i],]$ECT_session)==max(ECT[ECT$NAME==names_subj[i],]$ECT_session,na.rm = TRUE);
+if(index==FALSE){subj[i,1]<-names_subj[i]}
+}
+
+#Adding if sessions are divided or not 
+ECT<-as_tibble(ECT)%>%mutate(.after=ECT_session,ECT_TIME=1)
+
+
+for (i in c(1:72)){
+  test<-ECT%>%filter(NAME==names_subj[i])%>%print(n=120)
+  index<-which(test$ECT_session==1)
+if (length(index)==2){#If only divides two part 
+ECT[ECT$NAME==names_subj[i],]$ECT_TIME[(index[2]):nrow(ECT[ECT$NAME==names_subj[i],])]=2#Change 1 to 2 
+x<-ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==2,]$NAME
+ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==2,]$NAME<-rep(paste(x[1],"_2",sep = ""),length(x))#Change name for unique subject
+}else if(length(index)==3){
+  ECT[ECT$NAME==names_subj[i],]$ECT_TIME[(index[2]):(index[3]-1)]=2
+  ECT[ECT$NAME==names_subj[i],]$ECT_TIME[(index[3]):nrow(ECT[ECT$NAME==names_subj[i],])]=3
+  x<-ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==2,]$NAME
+  ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==2,]$NAME<-rep(paste(x[1],"_2",sep = ""),length(x))
+  x<-ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==3,]$NAME
+  ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==3,]$NAME<-rep(paste(x[1],"_3",sep = ""),length(x))
+}else if(length(index)==4){
+  ECT[ECT$NAME==names_subj[i],]$ECT_TIME[(index[2]):(index[3]-1)]=2
+  ECT[ECT$NAME==names_subj[i],]$ECT_TIME[(index[3]):(index[4]-1)]=3
+  ECT[ECT$NAME==names_subj[i],]$ECT_TIME[(index[4]):nrow(ECT[ECT$NAME==names_subj[i],])]=4
+  x<-ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==2,]$NAME
+  ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==2,]$NAME<-rep(paste(x[1],"_2",sep = ""),length(x))
+  x<-ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==3,]$NAME
+  ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==3,]$NAME<-rep(paste(x[1],"_3",sep = ""),length(x))
+  x<-ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==4,]$NAME
+  ECT[ECT$NAME==names_subj[i]&ECT$ECT_TIME==4,]$NAME<-rep(paste(x[1],"_4",sep = ""),length(x))
+}}
+
+
+#Diving S.A. to two sessions
+
+ECT[ECT$NAME=="S.A.",]$ECT_TIME<-c(rep(1,10),rep(2,14))
+x<-ECT[ECT$NAME=="S.A."&ECT$ECT_TIME==2,]$NAME
+ECT[ECT$NAME=="S.A."&ECT$ECT_TIME==2,]$NAME<-rep(paste(x[1],"_2",sep = ""),length(x))
+ECT[ECT$NAME=="S.A._2",]$ECT_session<-c(1:14)
+
+# F.B_2 merged with F.B._2 because it is continous
+ECT[ECT$NAME=="F.B._3",]$NAME<-"F.B._2"
+# R.K._2 merged with R.K.
+ECT[ECT$NAME=="R.K._2",]$NAME<-"R.K."
+# Merging idame EKT
+ECT[ECT$NAME=="K.T._2",]$NAME<-"K.T."
+
+# Changing  KET to 1 and 0 for with KET or NOT
+ECT$Ket <- ifelse(ECT$Ket==0,0,1)
+
+
+PAT<-read.csv("C:/Users/kaan/Downloads/HASTA_V2.csv")
+ECT_REAR<-arrange(ECT,NAME)
+PAT_REAR<-arrange(PAT,Abbrevation)
+
+df_list <- list()
+
+for(i in c(1:length(unique(ECT_REAR$NAME)))){
+LEN = nrow(ECT_REAR %>% filter(NAME==unique(ECT_REAR$NAME)[i]))
+X1<-bind_rows(replicate(LEN,PAT_REAR[i,c(2,7:24)],simplify = FALSE))
+X2<-ECT_REAR %>% filter(NAME==unique(ECT_REAR$NAME)[i])
+
+df_list[[i]]<-bind_cols(X1,X2)
+  
+}
+
+results_df <- do.call(rbind, df_list)
+
+
+
+```
+
+```{r Data for Analysis}
+my_data<-results_df %>% filter(!is.na(CGI.I)
+                               )%>%filter(!is.na(Charge)
+                               )%>%filter(!is.na(Diagnosis)
+                               )%>%filter(!is.na(SEIZURE_DURATION)
+                               )%>%filter(!is.na(GENDER)
+                               )%>%filter(!is.na(ECT_TYPE.BITEMPORAL.)
+                               )%>%filter(!is.na(Ket)
+                               )%>%filter(!Diagnosis=="OTHER" 
+                               )%>%filter(!Diagnosis=="OCB")
+
+
+
+#Changing GENDER to dummy variable
+my_data$GENDER<-ifelse(my_data$GENDER=="E",1,0)
+
+my_data$CGI.I<-ordered(my_data$CGI.I)
+my_data$Frequency<-ordered(my_data$Frequency)
+my_data$GENDER<-ordered(my_data$GENDER)
+my_data$PSYCHOTIC<-ordered(my_data$PSYCHOTIC)
+my_data$MANIC<-as.factor(my_data$MANIC)
+my_data$DEPRESSIVE<-as.factor(my_data$DEPRESSIVE)
+my_data$CATATONIA<-ordered(my_data$CATATONIA)
+my_data$PSM_RETARDATION<-ordered(my_data$PSM_RETARDATION)
+my_data$SUISIDALITY<-as.factor(my_data$SUISIDALITY)
+#my_data$Diagnosis<-ordered(my_data$Diagnosis)
+my_data$Charge<-as.integer(my_data$Charge)
+
+my_data$Diagnosis <- factor(my_data$Diagnosis, 
+                            ordered = TRUE, 
+                            levels = c("BPBD", "BPBM", "MDD", "SZ-A", "SZ"))
+my_data$Diagnosis<-ordered(as.numeric(my_data$Diagnosis))
+my_data$Charge_z<- (my_data$Charge - mean(my_data$Charge))/ sd(my_data$Charge)
+my_data$Age_z<- (my_data$Age - mean(my_data$Age))/ sd(my_data$Age)
+
+```
+
+# INTRODUCTION
+
+Electroconvulsive therapy has long lasting implications in Psychiatry. However, it is pathophysiological mechanisms still elusive that how therapy interacts with neural dynamics and remission occurs. Recent findings on neuroscience impacts on spatitemporal features of the brain in terms of psychiatric disorders and this features might be the pathopsyhsiliogy underlying psychiatric disorders. In MDD, it is shown that the dominance of slow frequency bands especially in cortical midline structures. From this perspective, we hypothesized that frequency of ECT might predict treatment response better than total charge of ECT, even though charge is directly related with frequency. To show this effect, we firstly investigated weather ECT relates with clinical global impression scores, and this mediated by the duration of seizure during ECT.
+
+# METHODS
+
+ECT recordings' registrations between dates 06.09.2017 - 13.08.2021 reviewed. 1011 total number of sessions utilized in analysis after sessions that have insufficient data were excluded. There were 57 of patients who had only one ECT treatment sequence for remission, while 10 of patient needed multiple treatment sequence and hospitalizations. 3 patients who had only one ECT treatment sequence for remission excluded due to insufficient information. The age distribution in our sample had a median of 42 years (Q2) with the first quartile 30.75 and third quartile 55.75. 25 of patients were male and 39 were female. Diagnoses of patients were as following: 30 patients of Bipolar Disorder Depressive Epizode, 14 patients of MDD, 12 patients of Schizophrenia, 3 patients of Schizoaffective disorder, 3 patients with Bipolar Disorder manic epizode, 1 patient for OCB and 1 patient for steroid treatment related catatonia and psyhotic symptoms. Median of Seizure duration was 19 seconds with mean of 20.39 seconds, first quartile 13 seconds and third quartile 26 seconds. All patients consulted to neurology prior to ECT sessions to exclude any intracranial contraindication to ECT. None of patients had epilepsy as a comorbidity. Patients Clinical Global Impressions scaled according to medical recordings of ECT sessions. Mania, depression, psychotic features, suicidality, catatonia, psychomotor retardation recorded as dummy variable according to existence independent from the diagnosis. In order to check weather ECT impact on CGI score improvement through duration of seizure, mediation model build by adding how ECT has applied, utilization of ketamin during ECT, z-transformed Age, gender, diagnosis and patients' above mentioned symptoms as covariate. Due to high correlation between symptoms; psychotic features, catatonia and psychomotor retardation utilized. Firstly, z-standardized charge is used a predictor of CGI scale improvement. As a second model, frequency during ECT sessions used as predictor variable.In order to estimate standart errors of parameters, data bootstrapped 1000 times. Comperative fit index and Tucker-Lewis Index is used to compare the fitness of two models. Secondly, to evaluate fitness of the ECT parameters in predicting the CGI output, we benefit from cumulative link function. Two models compared with each according Akaike-Information Criterion and ANOVA test. Mediation model build by lavaan package while cumulative link model build by ordinal package.
+
+```{r Mediation}
+
+# Sociodemographics
+# Only one treatment session taken numbers
+# Only one treatment session subjects
+ONCE <-my_data %>% filter(ECT_TIME=="1" & ECT_session=="1") %>% dplyr::slice(-c(10,20,21,25,26,36,46,49,60,61)) %>% pull(NAME)
+# First session excluded due to insufficient data. Thus added manually
+ONCE <-c(ONCE,"D.Gün.","E.G.")
+# Subjects that has only 1 ECT sequence 
+my_data %>% filter(NAME %in% ONCE) %>% group_by(NAME) %>% summarise(mean(Age))  %>% get_summary_stats(type="mean_sd")
+my_data %>% filter(NAME %in% ONCE) %>% group_by(NAME) %>% summarise(max_score = max(ECT_session)) %>% get_summary_stats(type="mean_sd")
+my_data %>% filter(NAME %in% ONCE) %>% group_by(NAME) %>% count(GENDER) %>% pull(GENDER) %>% table()
+my_data %>% filter(NAME %in% ONCE) %>% group_by(NAME) %>% count(Diagnosis) %>% pull(Diagnosis) %>% table()
+my_data %>% filter(NAME %in% ONCE) %>% group_by(NAME) %>% summarise(mean(SEIZURE_DURATION))  %>% get_summary_stats(type="mean_sd")
+
+# Multiple ECT session sequence statistics 
+MULT<-setdiff(my_data$NAME,ONCE)
+# Multiple ECT patients Age
+my_data %>% filter(NAME %in% MULT) %>% group_by(NAME) %>% summarise(mean(Age))  %>% get_summary_stats(type="mean_sd")
+# Multiple ECT patients Gender
+my_data %>% filter(!ECT_TIME=="1" & ECT_session=="1") %>% dplyr::slice(1,2,3,5,6,9,11,12,14,15) %>% count(GENDER==1)
+# Number of ECT Sessions 
+my_data %>% filter(NAME %in% MULT) %>% group_by(NAME) %>% summarise(max_score = max(ECT_session)) %>% get_summary_stats(type="mean_sd")
+#
+my_data %>% filter(NAME %in% MULT) %>% group_by(NAME) %>% count(Diagnosis) %>% pull(Diagnosis) %>% table()
+
+my_data %>% filter(NAME %in% MULT) %>% group_by(NAME) %>% summarise(mean(SEIZURE_DURATION))  %>% get_summary_stats(type="mean_sd")
+
+
+#### MEDIATION ####
+
+library(lavaan)
+
+###
+
+any(is.na(my_data[c("SUISIDALITY","PSYCHOTIC","CATATONIA","PSM_RETARDATION",
+                    "GENDER","ECT_TYPE.BITEMPORAL.","SEIZURE_DURATION","Ket","Charge_z","Frequency")]))
+
+# Shitty
+# model1 <- "
+#           PROFILE =~ PSYCHOTIC + CATATONIA + PSM_RETARDATION
+#           # Direct effect 
+#           CGI.I ~ c*Charge_z + ECT_TYPE.BITEMPORAL. + Ket + PROFILE  +GENDER + Age_z
+#           # Mediators 
+#           SEIZURE_DURATION ~ a*Charge_z + ECT_TYPE.BITEMPORAL. + Ket + PROFILE  +GENDER + Age_z
+#           CGI.I ~ b*SEIZURE_DURATION 
+#           # indirect effect (a*b)
+#           ab := a*b
+#           # total effect
+#           total := c + (a*b)
+# "
+
+
+# model1 <- '
+#           # Direct effect 
+#           CGI.I ~ c*Charge_z + GENDER + ECT_TYPE.BITEMPORAL. + Ket
+#           # Mediators 
+#           SEIZURE_DURATION ~ a*Charge_z + GENDER + ECT_TYPE.BITEMPORAL. + Ket
+#           CGI.I ~ b*SEIZURE_DURATION 
+#           # indirect effect (a*b)
+#           ab := a*b
+#           # total effect
+#           total := c + (a*b)
+# '
+# 
+# model1 <- '
+#           # Direct effect 
+#           CGI.I ~ c*Charge_z 
+#           # Mediators 
+#           SEIZURE_DURATION ~ a*Charge_z 
+#           CGI.I ~ b*SEIZURE_DURATION 
+#           # indirect effect (a*b)
+#           ab := a*b
+#           # total effect
+#           total := c + (a*b)
+# '
+# 
+# 
+
+# model2 <- '
+#           PROFILE =~ PSYCHOTIC + CATATONIA + PSM_RETARDATION + GENDER
+#           # Direct effect 
+#           CGI.I ~ c*Frequency + ECT_TYPE.BITEMPORAL. + Ket + PROFILE
+#           # Mediators 
+#           SEIZURE_DURATION ~ a*Frequency + ECT_TYPE.BITEMPORAL. + Ket + PROFILE
+#           CGI.I ~ b*SEIZURE_DURATION 
+#           # indirect effect (a*b)
+#           ab := a*b
+#           # total effect
+#           total := c + (a*b)
+# 
+
+#Overfitted
+model1 <- "
+          # Direct effect 
+          CGI.I ~ c*Charge_z + GENDER + ECT_TYPE.BITEMPORAL. + Ket + PSYCHOTIC + CATATONIA + PSM_RETARDATION + Diagnosis + Age_z
+          # Mediators 
+          SEIZURE_DURATION ~ a*Charge_z + GENDER + ECT_TYPE.BITEMPORAL. + Ket + PSYCHOTIC + CATATONIA + PSM_RETARDATION + Diagnosis + Age_z
+          CGI.I ~ b*SEIZURE_DURATION 
+          # indirect effect (a*b)
+          ab := a*b
+          # total effect
+          total := c + (a*b)
+"
+
+
+model2 <- '
+          # Direct effect 
+          CGI.I ~ c*Frequency + GENDER + ECT_TYPE.BITEMPORAL. + Ket + PSYCHOTIC + CATATONIA + PSM_RETARDATION + Age_z
+          # Mediators 
+          SEIZURE_DURATION ~ a*Frequency + GENDER + ECT_TYPE.BITEMPORAL. + Ket + PSYCHOTIC + CATATONIA + PSM_RETARDATION + Age_z
+          CGI.I ~ b*SEIZURE_DURATION 
+          # indirect effect (a*b)
+          ab := a*b
+          # total effect
+          total := c + (a*b)
+'
+
+
+fit1 <- sem(model1,
+           data = my_data,
+           estimator = "DWLS",
+           ordered = c("CGI.I","Diagnosis"),
+           se="bootstrap")
+
+fit2 <- sem(model2,
+           data = my_data,
+           estimator = "DWLS",
+           ordered = c("CGI.I","Diagnosis"),
+           se="bootstrap")
+
+parameterEstimates(fit1,standardized = TRUE)
+parameterEstimates(fit2,standardized = TRUE)
+summary(fit1,fit.measures = TRUE)
+summary(fit2,fit.measures = TRUE)
+
+
+
+cohens_d <- function(regEst, regSE) {
+  result <- regEst^2 / (regEst^2 + regSE^2)
+  return(result)
+}
+
+
+
+```
+
+```{r}
+# Charge model fits better in mediation model 
+
+formula1<- CGI.I ~ Charge_z + GENDER + Ket + ECT_TYPE.BITEMPORAL. + PSYCHOTIC + SUISIDALITY + CATATONIA + PSM_RETARDATION + Age_z
+
+formula2<- CGI.I ~ Frequency + GENDER + Ket + ECT_TYPE.BITEMPORAL. + PSYCHOTIC + SUISIDALITY + CATATONIA + PSM_RETARDATION + Age_z
+
+model1<- clm(formula = formula1,
+              data = my_data,
+              link="logit")
+
+model2<- clm(formula = formula2,
+              data = my_data,
+              link="logit")
+
+anova(model1,model2)
+AIC(model1,model2)
+```
+
+# RESULTS
+
+Mediation model suggests there is a direct effect of charge of ECT on CGI (Standardized Estimate= -0.183,p\<.001,Cohen's d effect size=0.97(large)), however there is no indirect interaction through seizure duration (Beta=-0.007,p=0.303,Cohen's d effect size=0.5(moderate)). Model p-value versus baseline model where there is no model was 0.185, suggesting that model is a signicificant model. Tucker Lewis Index (TLI) with 1 suggesting that model fits the data near perfect. Then we accounted the same model with frequency of ECT, instead of charge of ECT. As in the first model, there is a direct effect of Frequency of ECT on CGI (Standardized Estimate= -0.233,p\<.001,Cohen's d effect size=0.98(large)), however there is no indirect interaction through seizure duration (Standardized Estimate=-0.009,p=0.300,Cohen's d effect size=0.5(moderate)). Model p value was 0.205 and TLI was 1, both suggesting good fit of models to data. Results suggests that ECT improves clinical impression, however with direct effect independt from the effect of seizure duration. Secondly, We make a similar analysis in order to check which predictor fits the data better. Here, we used a cumulative link function with logit link of predictors to the CGI. Results suggests that charge model has AIC that 2161.8 while frequency has 2102.5, which shown that statistically lower Chisq according to ANOVA test. Overall, results suggest there is a direct effect of both charge and frequency on CGI, independent from seizure duration. In addition to that frequency can predict CGI better than charge, according to both Standardized Estimates and AIC.
+
+# CONCLUSION
+
+In our analysis, we investigate that if frequency or charge better explains the CGI scores and fits the model. We have been shown that CGI score improvement is direct effect of ECT parameters when other potential covariates controlled and independent from seuzire duration. Secondly, Frequency fits the data better than the charge. This can open the doors for future research and indivializaiton of ECT session according to frequency of ECT.
+
+```{r, eval=FALSE}
+# HAVE NO MEANING 
+# load the caret package
+library(caret)
+set.seed(126)
+
+# Excluding NA including unnecessary columns for CARET package
+test<-my_data[,colSums(is.na(my_data))==0]
+# create a training and testing partition
+trainIndex <- createDataPartition(test$CGI.I, p = 0.7, list = FALSE)
+
+# split the data into training and testing sets
+train_data <- test[trainIndex, ]
+test_data <- test[-trainIndex, ]
+
+#train_data<- na.omit(train_data)
+#test_data <- na.omit(test_data)
+
+# Train clm model with training dataset
+model.fit1<-clm(formula = formula1,data = train_data,link = "logit")
+
+model.fit2<-clm(formula = formula2,data = train_data,link = "logit")
+
+predictions_1<-predict(model.fit1,newdata=test_data,type="class",na.action=na.omit)
+
+predictions_2<-predict(model.fit2,newdata=test_data,type="class",na.action=na.omit)
+
+# Make predictions with the test dataset using cross-validation
+accuracy1 <- sum(as.vector(predictions_1$fit)==as.vector(test_data$CGI.I))/nrow(test_data)
+
+accuracy2 <- sum(as.vector(predictions_2$fit)==as.vector(test_data$CGI.I))/nrow(test_data)
+
+
+
+model.fit1<-clm(formula = formula1,data = my_data,link = "logit")
+
+model.fit2<-clm(formula = formula2,data = my_data,link = "logit")
+
+
+
+```
+
+```{r, eval=FALSE}
+
+# HAVE NO MEANING
+
+train_control <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 5,
+  verboseIter = FALSE,
+  returnData = FALSE,
+  returnResamp = "all",
+  search = "random"
+)
+
+
+train_control <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 5,
+  verboseIter = FALSE,
+  returnData = FALSE,
+  returnResamp = "all",
+  search = "random",
+  summaryFunction = multiClassSummary,
+  classProbs = TRUE
+)
+
+
+tune_Grid <- expand.grid(
+  method = c("polr","polr","polr"),
+  Hess = c(TRUE,TRUE,TRUE), # Use Hessian for better approximation
+  ties = c("efron", "exact", "approx"), # Specify the type of ties to handle
+  # Specify range of hyperparameters to tune
+  regularization = c( 0.01, 0.1, 1),
+  maxIter = c(50, 100, 200),
+  tol = c(1e-3, 1e-4, 1e-5)
+)
+
+# fit model using tuning grid
+clm_model1 <- train(CGI.I ~ Charge_z + GENDER + ECT_session + Ket + ECT_TYPE.BITEMPORAL. + PSYCHOTIC + SUISIDALITY + CATATONIA + PSM_RETARDATION,
+                   data = train_data,
+                   method = "polr",
+                   Hess=TRUE,
+                   trControl = train_control)
+
+clm_model2 <- train(CGI.I ~ Frequency + GENDER + ECT_session + Ket + ECT_TYPE.BITEMPORAL. + PSYCHOTIC + SUISIDALITY + CATATONIA + PSM_RETARDATION,
+                   data = train_data,
+                   method = "polr",
+                   Hess=TRUE,
+                   trControl = train_control
+)
+
+
+predictions <- predict(clm_model1, newdata = test_data, type = "raw")
+confusionMatrix(predictions, test_data$CGI.I)
+
+
+predictions <- predict(clm_model2, newdata = test_data, type = "raw")
+confusionMatrix(predictions, test_data$CGI.I)
+
+
+
+```
+
+```{r}
+# FIGURES FOR POSTER 
+
+# Seizure Duration Distrubition
+
+d<-ggplot(my_data,aes(x=SEIZURE_DURATION))+
+  theme_classic() +
+  theme(text = element_text(size = 20),  
+  plot.title = element_text(size = 20),  # Title font size
+  axis.title = element_text(size = 20),  # Axis label font size
+  legend.text = element_text(size = 12)) +
+  geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                 binwidth=.5,
+                 colour="black", fill="white") +
+  geom_density(alpha=.2, fill="#FF6666")+ # Overlay with transparent density plot
+  labs(x='SEIZURE DURATION(SEC)',y='DENSITY')
+
+# DAGs for mediation 
+library(tidySEM)
+graph_sem(fit1)
+
+graph_sem(fit2)
+
+# Custom mediation with dagitty
+
+dag1 <- dagitty( "dag{ 
+Freq -> CGI <- SD 
+Freq -> SD }" ) 
+coordinates(dag1) <- list( x=c(Freq=0,CGI=1,SD=2) , 
+                           y=c(Freq=0,CGI=-2,SD=0) ) 
+
+dag2 <- dagitty( "dag{ 
+Charge -> CGI <- SD 
+Charge -> SD }" ) 
+coordinates(dag2) <- list( x=c(Charge=0,CGI=1,SD=2) , 
+                           y=c(Charge=0,CGI=-2,SD=0) ) 
+
+
+drawdag(dag1,cex=2,lwd=3) # 600 to 500 
+drawdag(dag2,cex=2,lwd=3) # 600 to 500 
+```
+
+## 
